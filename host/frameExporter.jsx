@@ -39,40 +39,40 @@ function zeroPad(num, size) {
 
 // Find a PNG Still Image export preset (.epr file)
 function findPNGPreset() {
-    // Common preset locations on Windows
-    var presetPaths = [
-        // Premiere Pro 2025/2026 presets
-        '/c/Program Files/Adobe/Adobe Premiere Pro 2025/MediaIO/systempresets/4D504547_PNG Still Image/',
-        '/c/Program Files/Adobe/Adobe Premiere Pro 2026/MediaIO/systempresets/4D504547_PNG Still Image/',
-        // Generic search
-        '/c/Program Files/Adobe/'
-    ];
-
-    // Try to find PNG preset in standard locations
-    var possibleNames = [
-        'HDTV 1080p 29.97.epr',
-        'Match Source.epr',
-        'Source - Match Source.epr',
-        'HDTV 1080p.epr'
-    ];
-
-    // Search in common Premiere Pro preset directories
+    // Search for Premiere Pro installation and find PNG preset
     var adobeFolder = new Folder('C:/Program Files/Adobe');
-    if (adobeFolder.exists) {
-        var subfolders = adobeFolder.getFiles();
-        for (var i = 0; i < subfolders.length; i++) {
-            if (subfolders[i] instanceof Folder && subfolders[i].name.indexOf('Premiere Pro') >= 0) {
-                // Look for PNG Still Image presets
-                var pngPresetFolder = new Folder(subfolders[i].fsName + '/MediaIO/systempresets/');
-                if (pngPresetFolder.exists) {
-                    var presetFolders = pngPresetFolder.getFiles();
-                    for (var j = 0; j < presetFolders.length; j++) {
-                        if (presetFolders[j] instanceof Folder && presetFolders[j].name.indexOf('PNG') >= 0) {
-                            var eprFiles = presetFolders[j].getFiles('*.epr');
-                            if (eprFiles.length > 0) {
-                                return eprFiles[0].fsName;
-                            }
-                        }
+    if (!adobeFolder.exists) {
+        return null;
+    }
+
+    var subfolders = adobeFolder.getFiles();
+    for (var i = 0; i < subfolders.length; i++) {
+        if (subfolders[i] instanceof Folder && subfolders[i].fsName.indexOf('Premiere Pro') >= 0) {
+            var presetsRoot = new Folder(subfolders[i].fsName + '/MediaIO/systempresets/');
+            if (!presetsRoot.exists) continue;
+
+            // Search all preset subfolders for .epr files with "PNG" in the name
+            var presetFolders = presetsRoot.getFiles();
+            for (var j = 0; j < presetFolders.length; j++) {
+                if (!(presetFolders[j] instanceof Folder)) continue;
+
+                var eprFiles = presetFolders[j].getFiles('*.epr');
+                for (var k = 0; k < eprFiles.length; k++) {
+                    // Prefer "Match Source" preset without Alpha
+                    if (eprFiles[k].name.indexOf('PNG') >= 0 && eprFiles[k].name.indexOf('Alpha') < 0) {
+                        return eprFiles[k].fsName;
+                    }
+                }
+            }
+
+            // Fallback: any PNG preset (including Alpha)
+            for (var j = 0; j < presetFolders.length; j++) {
+                if (!(presetFolders[j] instanceof Folder)) continue;
+
+                var eprFiles = presetFolders[j].getFiles('*.epr');
+                for (var k = 0; k < eprFiles.length; k++) {
+                    if (eprFiles[k].name.indexOf('PNG') >= 0) {
+                        return eprFiles[k].fsName;
                     }
                 }
             }
