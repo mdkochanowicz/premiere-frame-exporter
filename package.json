@@ -4,7 +4,7 @@
   "description": "Adobe Premiere Pro plugin for automatic frame extraction",
   "main": "client/main.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "install-cep": "node install.js"
   },
   "keywords": [
     "adobe",
@@ -22,6 +22,8 @@
   "devDependencies": {
     "commitizen": "^4.3.1",
     "cz-conventional-changelog": "^3.3.0"
+  },
+  "dependencies": {
+    "fs-extra": "^11.3.3"
   }
 }
- 
