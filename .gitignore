@@ -1,0 +1,17 @@
+# Node modules
+node_modules/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Debug logs
+*.log
+debug.log
+
+# Adobe CEP debug files
+.debug
