@@ -1,0 +1,15 @@
+Windows Registry Editor Version 5.00
+
+[HKEY_CURRENT_USER\Software\Adobe\CSXS.11]
+"PlayerDebugMode"="1"
+"LogLevel"="6"
+
+[HKEY_CURRENT_USER\Software\Adobe\CSXS.12]
+"PlayerDebugMode"="1"
+"LogLevel"="6"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Adobe\CSXS.11]
+"PlayerDebugMode"="1"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Adobe\CSXS.12]
+"PlayerDebugMode"="1"

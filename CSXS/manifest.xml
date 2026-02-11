@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<ExtensionManifest Version="7.0" ExtensionBundleId="com.fsomichal.frameexporter" ExtensionBundleVersion="1.0.0">
+<ExtensionManifest Version="12.0" ExtensionBundleId="com.fsomichal.frameexporter" ExtensionBundleVersion="1.0.0">
 
-<ExtensionList>
+  <ExtensionList>
     <Extension Id="com.fsomichal.frameexporter.panel" Version="1.0.0" />
   </ExtensionList>
 
@@ -13,7 +13,7 @@
       <Locale Code="All" />
     </LocaleList>
     <RequiredRuntimeList>
-      <RequiredRuntime Name="CSXS" Version="7.0" />
+      <RequiredRuntime Name="CSXS" Version="12.0" />
     </RequiredRuntimeList>
   </ExecutionEnvironment>
 
@@ -22,7 +22,7 @@
       <DispatchInfo>
         <Resources>
           <MainPath>./client/index.html</MainPath>
-          <ScriptPath>./host</ScriptPath>
+          <ScriptPath>./host/frameExporter.jsx</ScriptPath>
           <CEFCommandLine />
         </Resources>
         <Lifecycle>
@@ -34,7 +34,7 @@
           <Geometry>
             <Size>
               <Height>500</Height>
-              <Width>350</Width>
+              <Width>400</Width>
             </Size>
           </Geometry>
         </UI>

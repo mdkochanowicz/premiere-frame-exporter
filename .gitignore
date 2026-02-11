@@ -14,4 +14,4 @@ Thumbs.db
 debug.log
 
 # Adobe CEP debug files
-.debug
+# .debug is tracked intentionally - required for unsigned extension development
