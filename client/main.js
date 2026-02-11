@@ -49,15 +49,23 @@ selectSequenceBtn.addEventListener('click', function() {
     
     // Call ExtendScript in Premiere Pro
     csInterface.evalScript('getActiveSequenceInfo()', function(result) {
-        if (result && result !== 'null') {
-            const data = JSON.parse(result);
-            sequenceName.textContent = data.name;
-            sequenceDuration.textContent = data.duration + ' seconds';
-            sequenceInfo.style.display = 'block';
-            exportFramesBtn.disabled = false;
-            showStatus('Sequence selected!', 'success');
+        if (result && result !== 'null' && result !== 'undefined') {
+            try {
+                var data = JSON.parse(result);
+                if (data.error) {
+                    showStatus(data.error, 'error');
+                    return;
+                }
+                sequenceName.textContent = data.name;
+                sequenceDuration.textContent = data.duration + 's (' + data.width + 'x' + data.height + ', ' + data.frameRate + ' fps)';
+                sequenceInfo.style.display = 'block';
+                exportFramesBtn.disabled = false;
+                showStatus('Sequence selected!', 'success');
+            } catch (e) {
+                showStatus('Error parsing sequence info: ' + e.message, 'error');
+            }
         } else {
-            showStatus('No active sequence found', 'error');
+            showStatus('No active sequence found. Open a sequence first.', 'error');
         }
     });
 });
@@ -82,11 +90,19 @@ exportFramesBtn.addEventListener('click', function() {
     csInterface.evalScript(`exportFrames('${params}')`, function(result) {
         exportFramesBtn.disabled = false;
         
-        if (result && result !== 'error') {
-            const data = JSON.parse(result);
-            showStatus(`Successfully exported ${data.count} frames to ${data.path}`, 'success');
+        if (result && result !== 'undefined' && result !== 'null') {
+            try {
+                var data = JSON.parse(result);
+                if (data.error) {
+                    showStatus('Export error: ' + data.error, 'error');
+                    return;
+                }
+                showStatus('Queued ' + data.count + ' frames for export to: ' + data.path + '\nCheck Adobe Media Encoder for progress.', 'success');
+            } catch (e) {
+                showStatus('Unexpected response: ' + result, 'error');
+            }
         } else {
-            showStatus('Error exporting frames', 'error');
+            showStatus('No response from export script. Check the ExtendScript console.', 'error');
         }
     });
 });
