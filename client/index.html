@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frame Exporter</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="container">
+        <h1>Frame Exporter</h1>
+        <p class="subtitle">Automatic frame extraction for thumbnails</p>
+
+        <div class="section">
+            <label for="method">Frame Selection Method:</label>
+            <select id="method">
+                <option value="time">Time-based (every X seconds)</option>
+                <option value="motion">Motion Detection</option>
+                <option value="face" disabled>Face Detection (coming soon)</option>
+            </select>
+        </div>
+
+        <div class="section" id="timeSettings">
+            <label for="interval">Time Interval (seconds):</label>
+            <input type="number" id="interval" value="5" min="1" max="60">
+        </div>
+
+        <div class="section" id="motionSettings" style="display: none;">
+            <label for="sensitivity">Motion Sensitivity:</label>
+            <input type="range" id="sensitivity" min="1" max="10" value="5">
+            <span id="sensitivityValue">5</span>
+        </div>
+
+        <div class="section">
+            <button id="selectSequence" class="btn btn-primary">Select Active Sequence</button>
+            <div id="sequenceInfo" style="display: none;">
+                <p><strong>Sequence:</strong> <span id="sequenceName">-</span></p>
+                <p><strong>Duration:</strong> <span id="sequenceDuration">-</span></p>
+            </div>
+        </div>
+
+        <div class="section">
+            <button id="exportFrames" class="btn btn-success" disabled>Export Frames</button>
+        </div>
+
+        <div id="status" class="status"></div>
+    </div>
+
+    <script src="main.js"></script>
+</body>
+</html>
