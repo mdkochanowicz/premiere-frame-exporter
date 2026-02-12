@@ -1,8 +1,14 @@
 # Premiere Frame Exporter
 
-CEP extension for Adobe Premiere Pro that automatically exports frames from a sequence as PNG images. Designed for multi-camera podcast setups where you need thumbnails from each camera angle.
+CEP extension for Adobe Premiere Pro that automatically exports frames from a sequence as still images. Designed for multi-camera podcast setups where you need thumbnails from each camera angle.
 
 ## Features
+
+- **Time-based export** — extract a frame every X seconds (1–60s interval)
+- **Multiple output formats** — PNG, JPEG, TIFF, DPX, BMP
+- **Direct export** — uses Premiere's built-in Export Frame (QE DOM), no Adobe Media Encoder needed
+- Output folder created automatically next to the project file (`FrameExports_<sequence name>/`)
+- Works with Premiere Pro 25.0+ (CEP 12)
 
 ## Requirements
 
@@ -37,10 +43,11 @@ CEP extension for Adobe Premiere Pro that automatically exports frames from a se
 1. Open a project and a sequence in Premiere Pro.
 2. Open the **Frame Exporter** panel.
 3. Click **Select Active Sequence** — the panel shows the sequence name and duration.
-4. Choose a frame selection method:
+4. Choose an **output format** (PNG, JPEG, TIFF, DPX, BMP).
+5. Choose a frame selection method:
    - **Time-based** — set the interval in seconds.
-5. Click **Export Frames**.
-6. Frames are queued in Adobe Media Encoder and rendered as PNGs to `FrameExports_<sequence>/` next to your `.prproj` file.
+6. Click **Export Frames**.
+7. Frames are exported directly by Premiere Pro to `FrameExports_<sequence>/` next to your `.prproj` file.
 
 ## Project Structure
 
@@ -49,7 +56,7 @@ CSXS/manifest.xml        CEP 12 extension manifest
 client/index.html         Panel UI
 client/main.js            UI logic + CSInterface communication
 client/style.css          Panel styles
-host/frameExporter.jsx    ExtendScript — sequence info, preset discovery, AME export
+host/frameExporter.jsx    ExtendScript — sequence info, QE DOM frame export
 host/CSInterface.js       Adobe CEP 12 JS library
 install.js                Copies extension to system CEP folder
 enable-debug.reg          Registry keys for unsigned extension loading
@@ -65,7 +72,6 @@ With the extension loaded and Premiere Pro running, open `http://localhost:8088`
 - [ ] Real motion/scene-change detection (pixel diff analysis)
 - [ ] Face detection (different expressions)
 - [ ] macOS support
-- [ ] Custom output format (JPEG, TIFF)
 
 ## License
 

@@ -3,6 +3,7 @@ const csInterface = new CSInterface();
 
 // UI Elements
 const methodSelect = document.getElementById('method');
+const formatSelect = document.getElementById('format');
 const timeSettings = document.getElementById('timeSettings');
 const motionSettings = document.getElementById('motionSettings');
 const intervalInput = document.getElementById('interval');
@@ -80,8 +81,11 @@ exportFramesBtn.addEventListener('click', function() {
     exportFramesBtn.disabled = true;
     
     // Prepare parameters
+    const format = formatSelect.value;
+
     const params = JSON.stringify({
         method: method,
+        format: format,
         interval: parseInt(interval),
         sensitivity: parseInt(sensitivity)
     });
@@ -97,7 +101,7 @@ exportFramesBtn.addEventListener('click', function() {
                     showStatus('Export error: ' + data.error, 'error');
                     return;
                 }
-                showStatus('Queued ' + data.count + ' frames for export to: ' + data.path + '\nCheck Adobe Media Encoder for progress.', 'success');
+                showStatus('Exported ' + data.count + ' frames to: ' + data.path, 'success');
             } catch (e) {
                 showStatus('Unexpected response: ' + result, 'error');
             }

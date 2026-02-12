@@ -1,5 +1,7 @@
 // Premiere Frame Exporter - ExtendScript Host
-// Exports frames from the active sequence as PNG images
+// Exports frames from the active sequence using Premiere's built-in Export Frame (QE DOM)
+
+var TICKS_PER_SECOND = 254016000000;
 
 // Get information about the active sequence
 function getActiveSequenceInfo() {
@@ -10,15 +12,14 @@ function getActiveSequenceInfo() {
             return JSON.stringify({ error: 'No active sequence. Open a sequence first.' });
         }
 
-        // seq.end and seq.timebase are strings representing ticks
         var endTicks = parseFloat(seq.end);
         var ticksPerFrame = parseFloat(seq.timebase);
-        var durationSeconds = endTicks / 254016000000;  // ticks per second constant
+        var durationSeconds = endTicks / TICKS_PER_SECOND;
 
         var info = {
             name: seq.name,
             duration: Math.round(durationSeconds * 100) / 100,
-            frameRate: Math.round(254016000000 / ticksPerFrame * 100) / 100,
+            frameRate: Math.round(TICKS_PER_SECOND / ticksPerFrame * 100) / 100,
             width: seq.frameSizeHorizontal,
             height: seq.frameSizeVertical
         };
@@ -37,49 +38,17 @@ function zeroPad(num, size) {
 }
 
 
-// Find a PNG Still Image export preset (.epr file)
-function findPNGPreset() {
-    // Search for Premiere Pro installation and find PNG preset
-    var adobeFolder = new Folder('C:/Program Files/Adobe');
-    if (!adobeFolder.exists) {
-        return null;
+// Export a single frame using the QE DOM Export Frame mechanism
+// format: 'png', 'jpeg', 'tiff', 'dpx', 'bmp'
+function exportSingleFrame(qeSeq, timecode, outputPath, format) {
+    switch (format) {
+        case 'png':   return qeSeq.exportFramePNG(timecode, outputPath);
+        case 'jpeg':  return qeSeq.exportFrameJPEG(timecode, outputPath);
+        case 'tiff':  return qeSeq.exportFrameTIFF(timecode, outputPath);
+        case 'dpx':   return qeSeq.exportFrameDPX(timecode, outputPath);
+        case 'bmp':   return qeSeq.exportFrameBMP(timecode, outputPath);
+        default:      return qeSeq.exportFramePNG(timecode, outputPath);
     }
-
-    var subfolders = adobeFolder.getFiles();
-    for (var i = 0; i < subfolders.length; i++) {
-        if (subfolders[i] instanceof Folder && subfolders[i].fsName.indexOf('Premiere Pro') >= 0) {
-            var presetsRoot = new Folder(subfolders[i].fsName + '/MediaIO/systempresets/');
-            if (!presetsRoot.exists) continue;
-
-            // Search all preset subfolders for .epr files with "PNG" in the name
-            var presetFolders = presetsRoot.getFiles();
-            for (var j = 0; j < presetFolders.length; j++) {
-                if (!(presetFolders[j] instanceof Folder)) continue;
-
-                var eprFiles = presetFolders[j].getFiles('*.epr');
-                for (var k = 0; k < eprFiles.length; k++) {
-                    // Prefer "Match Source" preset without Alpha
-                    if (eprFiles[k].name.indexOf('PNG') >= 0 && eprFiles[k].name.indexOf('Alpha') < 0) {
-                        return eprFiles[k].fsName;
-                    }
-                }
-            }
-
-            // Fallback: any PNG preset (including Alpha)
-            for (var j = 0; j < presetFolders.length; j++) {
-                if (!(presetFolders[j] instanceof Folder)) continue;
-
-                var eprFiles = presetFolders[j].getFiles('*.epr');
-                for (var k = 0; k < eprFiles.length; k++) {
-                    if (eprFiles[k].name.indexOf('PNG') >= 0) {
-                        return eprFiles[k].fsName;
-                    }
-                }
-            }
-        }
-    }
-
-    return null;
 }
 
 
@@ -93,12 +62,18 @@ function exportFrames(paramsJSON) {
             return JSON.stringify({ error: 'No active sequence.' });
         }
 
+        // Enable QE DOM (required for Export Frame methods)
+        app.enableQE();
+        var qeSeq = qe.project.getActiveSequence();
+
+        if (!qeSeq) {
+            return JSON.stringify({ error: 'Could not access QE sequence. Make sure a sequence is open.' });
+        }
+
+        var format = params.format || 'png';
         var method = params.method;
         var interval = params.interval;
         var sensitivity = params.sensitivity;
-
-        // Ticks per second constant (Premiere Pro uses 254016000000 ticks/sec)
-        var TICKS_PER_SECOND = 254016000000;
 
         var endTicks = parseFloat(seq.end);
         var ticksPerFrame = parseFloat(seq.timebase);
@@ -108,7 +83,6 @@ function exportFrames(paramsJSON) {
         var projectPath = app.project.path;
         var projectFolder = new Folder(projectPath).parent;
 
-        // Clean sequence name for folder
         var safeName = seq.name.replace(/[\/\\:*?"<>|]/g, '_');
         var outputFolder = new Folder(projectFolder.fsName + '/FrameExports_' + safeName);
 
@@ -138,54 +112,32 @@ function exportFrames(paramsJSON) {
             return JSON.stringify({ error: 'No frames to export (sequence too short or interval too large).' });
         }
 
-        // Find PNG preset
-        var presetPath = findPNGPreset();
-
-        if (!presetPath) {
-            return JSON.stringify({ error: 'PNG export preset not found. Check Premiere Pro installation.' });
-        }
-
-        // Launch Adobe Media Encoder
-        app.encoder.launchEncoder();
-
-        // Queue each frame for export via AME
+        // Export each frame using QE DOM Export Frame
         var exportedCount = 0;
 
         for (var t = 0; t < timestamps.length; t++) {
             var timeSeconds = timestamps[t];
 
-            // Set in and out points to a single frame
-            seq.setInPoint(timeSeconds);
-            seq.setOutPoint(timeSeconds + (ticksPerFrame / TICKS_PER_SECOND));
+            // Move the playhead (CTI) to the target time
+            var ticks = String(Math.round(timeSeconds * TICKS_PER_SECOND));
+            seq.setPlayerPosition(ticks);
 
-            var frameName = 'frame_' + zeroPad(t + 1, 4) + '.png';
-            var framePath = outputFolder.fsName + '/' + frameName;
+            // Get the timecode string from QE (used by exportFrame methods)
+            var timecode = qeSeq.CTI.timecode;
 
-            // Queue the single-frame render via AME
-            // workArea = 1 means ENCODE_IN_TO_OUT
-            var jobID = app.encoder.encodeSequence(
-                seq,
-                framePath,
-                presetPath,
-                1,  // ENCODE_IN_TO_OUT
-                1   // removeUponCompletion
-            );
+            // Build output path (QE exportFrame methods append the file extension automatically)
+            var frameName = 'frame_' + zeroPad(t + 1, 4);
+            var framePath = outputFolder.fsName + '\\' + frameName;
 
-            if (jobID && jobID !== '0') {
-                exportedCount++;
-            }
+            // Export the frame
+            exportSingleFrame(qeSeq, timecode, framePath, format);
+            exportedCount++;
         }
 
-        // Start the batch render
-        app.encoder.startBatch();
-
-        // Return result
-        var result = {
+        return JSON.stringify({
             count: exportedCount,
             path: outputFolder.fsName
-        };
-
-        return JSON.stringify(result);
+        });
 
     } catch (e) {
         return JSON.stringify({ error: e.message });
