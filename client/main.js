@@ -104,8 +104,9 @@ exportFramesBtn.addEventListener('click', function() {
         sensitivity: parseInt(sensitivity)
     });
     
-    // Call ExtendScript
-    csInterface.evalScript(`exportFrames('${params}')`, function(result) {
+    // Call ExtendScript — escape backslashes for evalScript string embedding
+    var escapedParams = params.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    csInterface.evalScript("exportFrames('" + escapedParams + "')", function(result) {
         exportFramesBtn.disabled = false;
         
         if (result && result !== 'undefined' && result !== 'null') {
