@@ -48,6 +48,14 @@
         </div>
 
         <div class="section">
+            <label>Output Folder:</label>
+            <div style="display:flex; gap:8px; align-items:center;">
+                <input type="text" id="outputPath" placeholder="Default: next to project file" readonly style="flex:1; cursor:pointer;">
+                <button id="browseFolder" class="btn btn-primary" style="width:auto; padding:8px 12px;">Browse</button>
+            </div>
+        </div>
+
+        <div class="section">
             <button id="selectSequence" class="btn btn-primary">Select Active Sequence</button>
             <div id="sequenceInfo" style="display: none;">
                 <p><strong>Sequence:</strong> <span id="sequenceName">-</span></p>

@@ -38,6 +38,16 @@ function zeroPad(num, size) {
 }
 
 
+// Let user pick an output folder via system dialog
+function pickOutputFolder() {
+    var folder = Folder.selectDialog('Choose output folder for exported frames');
+    if (folder) {
+        return folder.fsName;
+    }
+    return '';
+}
+
+
 // Export a single frame using the QE DOM Export Frame mechanism
 function exportSingleFrame(qeSeq, timecode, outputPath, format) {
     switch (format) {
@@ -81,12 +91,17 @@ function exportFrames(paramsJSON) {
         var ticksPerFrame = parseFloat(seq.timebase);
         var durationSeconds = endTicks / TICKS_PER_SECOND;
 
-        // Create output folder next to project file
-        var projectPath = app.project.path;
-        var projectFolder = new Folder(projectPath).parent;
-
-        var safeName = seq.name.replace(/[\/\\:*?"<>|]/g, '_');
-        var outputFolder = new Folder(projectFolder.fsName + '/FrameExports_' + safeName);
+        // Determine output folder
+        var outputFolder;
+        if (params.outputPath && params.outputPath !== '') {
+            outputFolder = new Folder(params.outputPath);
+        } else {
+            // Default: next to project file
+            var projectPath = app.project.path;
+            var projectFolder = new Folder(projectPath).parent;
+            var safeName = seq.name.replace(/[\/\\:*?"<>|]/g, '_');
+            outputFolder = new Folder(projectFolder.fsName + '/FrameExports_' + safeName);
+        }
 
         if (!outputFolder.exists) {
             var created = outputFolder.create();

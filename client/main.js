@@ -15,6 +15,20 @@ const sequenceInfo = document.getElementById('sequenceInfo');
 const sequenceName = document.getElementById('sequenceName');
 const sequenceDuration = document.getElementById('sequenceDuration');
 const statusDiv = document.getElementById('status');
+const outputPathInput = document.getElementById('outputPath');
+const browseFolderBtn = document.getElementById('browseFolder');
+
+var customOutputPath = '';
+
+// Browse for output folder
+browseFolderBtn.addEventListener('click', function() {
+    csInterface.evalScript('pickOutputFolder()', function(result) {
+        if (result && result !== 'null' && result !== 'undefined' && result !== '') {
+            customOutputPath = result;
+            outputPathInput.value = result;
+        }
+    });
+});
 
 // Event Listeners
 methodSelect.addEventListener('change', function() {
@@ -85,6 +99,7 @@ exportFramesBtn.addEventListener('click', function() {
     const params = JSON.stringify({
         method: method,
         format: format,
+        outputPath: customOutputPath,
         interval: parseInt(interval),
         sensitivity: parseInt(sensitivity)
     });
