@@ -38,16 +38,6 @@ function zeroPad(num, size) {
 }
 
 
-// Let user pick an output folder via system dialog
-function pickOutputFolder() {
-    var folder = Folder.selectDialog('Choose output folder for exported frames');
-    if (folder) {
-        return folder.fsName;
-    }
-    return '';
-}
-
-
 // Export a single frame using the QE DOM Export Frame mechanism
 function exportSingleFrame(qeSeq, timecode, outputPath, format) {
     switch (format) {

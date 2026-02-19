@@ -23,7 +23,9 @@
         <Resources>
           <MainPath>./client/index.html</MainPath>
           <ScriptPath>./host/frameExporter.jsx</ScriptPath>
-          <CEFCommandLine />
+          <CEFCommandLine>
+            <Parameter>--enable-nodejs</Parameter>
+          </CEFCommandLine>
         </Resources>
         <Lifecycle>
           <AutoVisible>true</AutoVisible>

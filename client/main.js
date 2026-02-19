@@ -20,14 +20,26 @@ const browseFolderBtn = document.getElementById('browseFolder');
 
 var customOutputPath = '';
 
-// Browse for output folder
+// Browse for output folder using modern Windows file explorer dialog
+var nodePath = require('path');
+var childProcess = require('child_process');
+
 browseFolderBtn.addEventListener('click', function() {
-    csInterface.evalScript('pickOutputFolder()', function(result) {
-        if (result && result !== 'null' && result !== 'undefined' && result !== '') {
-            customOutputPath = result;
-            outputPathInput.value = result;
+    try {
+        var extensionPath = csInterface.getSystemPath(SystemPath.EXTENSION);
+        var scriptPath = nodePath.join(extensionPath, 'host', 'folderPicker.ps1');
+        var result = childProcess.execSync(
+            'powershell.exe -ExecutionPolicy Bypass -NoProfile -File "' + scriptPath + '"',
+            { encoding: 'utf8', windowsHide: true, timeout: 120000 }
+        );
+        var folder = result.trim();
+        if (folder) {
+            customOutputPath = folder;
+            outputPathInput.value = folder;
         }
-    });
+    } catch (e) {
+        // User cancelled or error — do nothing
+    }
 });
 
 // Event Listeners
