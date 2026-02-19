@@ -42,12 +42,15 @@ function zeroPad(num, size) {
 // format: 'png', 'jpeg', 'tiff', 'dpx', 'bmp'
 function exportSingleFrame(qeSeq, timecode, outputPath, format) {
     switch (format) {
-        case 'png':   return qeSeq.exportFramePNG(timecode, outputPath);
-        case 'jpeg':  return qeSeq.exportFrameJPEG(timecode, outputPath);
-        case 'tiff':  return qeSeq.exportFrameTIFF(timecode, outputPath);
-        case 'dpx':   return qeSeq.exportFrameDPX(timecode, outputPath);
-        case 'bmp':   return qeSeq.exportFrameBMP(timecode, outputPath);
-        default:      return qeSeq.exportFramePNG(timecode, outputPath);
+        case 'bmp':     return qeSeq.exportFrameBMP(timecode, outputPath);
+        case 'dpx':     return qeSeq.exportFrameDPX(timecode, outputPath);
+        case 'gif':     return qeSeq.exportFrameGIF(timecode, outputPath);
+        case 'jpeg':    return qeSeq.exportFrameJPEG(timecode, outputPath);
+        case 'openexr': return qeSeq.exportFrameOpenEXR(timecode, outputPath);
+        case 'png':     return qeSeq.exportFramePNG(timecode, outputPath);
+        case 'targa':   return qeSeq.exportFrameTarga(timecode, outputPath);
+        case 'tiff':    return qeSeq.exportFrameTIFF(timecode, outputPath);
+        default:        return qeSeq.exportFramePNG(timecode, outputPath);
     }
 }
 
