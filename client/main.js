@@ -153,3 +153,25 @@ exportFramesBtn.addEventListener('click', function() {
         }
     });
 });
+
+// Debug Export Methods
+var debugBtn = document.getElementById('debugExport');
+var debugOutput = document.getElementById('debugOutput');
+if (debugBtn) {
+    debugBtn.addEventListener('click', function() {
+        debugOutput.style.display = 'block';
+        debugOutput.textContent = 'Running tests...';
+        csInterface.evalScript('debugExportFrameMethods()', function(result) {
+            try {
+                var data = JSON.parse(result);
+                if (data.error) {
+                    debugOutput.textContent = 'ERROR: ' + data.error;
+                } else {
+                    debugOutput.textContent = data.results.join('\n');
+                }
+            } catch (e) {
+                debugOutput.textContent = 'Raw: ' + result;
+            }
+        });
+    });
+}
