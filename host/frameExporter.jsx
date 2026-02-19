@@ -38,19 +38,36 @@ function zeroPad(num, size) {
 }
 
 
+// Map depth values to QE DOM depth constants
+// TIFF: 0 = 8-bit int, 1 = 16-bit int, 2 = 32-bit float
+// PNG:  0 = 8-bit, 1 = 16-bit
+function getDepthIndex(format, depth) {
+    if (format === 'tiff') {
+        if (depth === '16') return 1;
+        if (depth === '32') return 2;
+        return 0;
+    }
+    if (format === 'png') {
+        if (depth === '16') return 1;
+        return 0;
+    }
+    return 0;
+}
+
+
 // Export a single frame using the QE DOM Export Frame mechanism
-// format: 'png', 'jpeg', 'tiff', 'dpx', 'bmp'
-function exportSingleFrame(qeSeq, timecode, outputPath, format) {
+function exportSingleFrame(qeSeq, timecode, outputPath, format, depth) {
+    var depthIdx = getDepthIndex(format, depth);
     switch (format) {
         case 'bmp':     return qeSeq.exportFrameBMP(timecode, outputPath);
         case 'dpx':     return qeSeq.exportFrameDPX(timecode, outputPath);
         case 'gif':     return qeSeq.exportFrameGIF(timecode, outputPath);
         case 'jpeg':    return qeSeq.exportFrameJPEG(timecode, outputPath);
         case 'openexr': return qeSeq.exportFrameOpenEXR(timecode, outputPath);
-        case 'png':     return qeSeq.exportFramePNG(timecode, outputPath);
+        case 'png':     return qeSeq.exportFramePNG(timecode, outputPath, depthIdx);
         case 'targa':   return qeSeq.exportFrameTarga(timecode, outputPath);
-        case 'tiff':    return qeSeq.exportFrameTIFF(timecode, outputPath);
-        default:        return qeSeq.exportFramePNG(timecode, outputPath);
+        case 'tiff':    return qeSeq.exportFrameTIFF(timecode, outputPath, depthIdx);
+        default:        return qeSeq.exportFramePNG(timecode, outputPath, depthIdx);
     }
 }
 
@@ -74,6 +91,7 @@ function exportFrames(paramsJSON) {
         }
 
         var format = params.format || 'png';
+        var depth = params.depth || '8';
         var method = params.method;
         var interval = params.interval;
         var sensitivity = params.sensitivity;
@@ -133,7 +151,7 @@ function exportFrames(paramsJSON) {
             var framePath = outputFolder.fsName + '\\' + frameName;
 
             // Export the frame
-            exportSingleFrame(qeSeq, timecode, framePath, format);
+            exportSingleFrame(qeSeq, timecode, framePath, format, depth);
             exportedCount++;
         }
 
