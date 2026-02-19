@@ -14,49 +14,7 @@ const exportFramesBtn = document.getElementById('exportFrames');
 const sequenceInfo = document.getElementById('sequenceInfo');
 const sequenceName = document.getElementById('sequenceName');
 const sequenceDuration = document.getElementById('sequenceDuration');
-const depthSelect = document.getElementById('depth');
 const statusDiv = document.getElementById('status');
-
-// Depth options per format
-const depthOptions = {
-    tiff: [
-        { value: '8', label: '8 Bit Integer Components' },
-        { value: '16', label: '16 Bit Integer Components' },
-        { value: '32', label: '32 bit Floating-Point Components' }
-    ],
-    png: [
-        { value: '8', label: '8 Bit' },
-        { value: '16', label: '16 Bit' }
-    ]
-};
-
-function updateDepthOptions() {
-    const format = formatSelect.value;
-    const options = depthOptions[format];
-    depthSelect.innerHTML = '';
-
-    if (options) {
-        depthSelect.disabled = false;
-        options.forEach(function(opt) {
-            var el = document.createElement('option');
-            el.value = opt.value;
-            el.textContent = opt.label;
-            depthSelect.appendChild(el);
-        });
-    } else {
-        depthSelect.disabled = true;
-        var el = document.createElement('option');
-        el.value = '';
-        el.textContent = 'N/A';
-        depthSelect.appendChild(el);
-    }
-}
-
-// Initialize depth options for default format
-updateDepthOptions();
-
-// Update depth when format changes
-formatSelect.addEventListener('change', updateDepthOptions);
 
 // Event Listeners
 methodSelect.addEventListener('change', function() {
@@ -123,12 +81,10 @@ exportFramesBtn.addEventListener('click', function() {
     
     // Prepare parameters
     const format = formatSelect.value;
-    const depth = depthSelect.value;
 
     const params = JSON.stringify({
         method: method,
         format: format,
-        depth: depth,
         interval: parseInt(interval),
         sensitivity: parseInt(sensitivity)
     });
@@ -153,25 +109,3 @@ exportFramesBtn.addEventListener('click', function() {
         }
     });
 });
-
-// Debug Export Methods
-var debugBtn = document.getElementById('debugExport');
-var debugOutput = document.getElementById('debugOutput');
-if (debugBtn) {
-    debugBtn.addEventListener('click', function() {
-        debugOutput.style.display = 'block';
-        debugOutput.textContent = 'Running tests...';
-        csInterface.evalScript('debugExportFrameMethods()', function(result) {
-            try {
-                var data = JSON.parse(result);
-                if (data.error) {
-                    debugOutput.textContent = 'ERROR: ' + data.error;
-                } else {
-                    debugOutput.textContent = data.results.join('\n');
-                }
-            } catch (e) {
-                debugOutput.textContent = 'Raw: ' + result;
-            }
-        });
-    });
-}
