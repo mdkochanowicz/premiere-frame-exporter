@@ -9,6 +9,11 @@ const motionSettings = document.getElementById('motionSettings');
 const intervalInput = document.getElementById('interval');
 const sensitivitySlider = document.getElementById('sensitivity');
 const sensitivityValue = document.getElementById('sensitivityValue');
+const strategySelect = document.getElementById('strategy');
+const strategyHint = document.getElementById('strategyHint');
+const sensitivitySection = document.getElementById('sensitivitySection');
+const sensitivityHint = document.getElementById('sensitivityHint');
+const editPointPreview = document.getElementById('editPointPreview');
 const selectSequenceBtn = document.getElementById('selectSequence');
 const exportFramesBtn = document.getElementById('exportFrames');
 const sequenceInfo = document.getElementById('sequenceInfo');
@@ -54,9 +59,50 @@ methodSelect.addEventListener('change', function() {
 });
 
 
+// Strategy hints
+var strategyHints = {
+    cuts: 'Scans timeline for clip boundaries \u2014 captures each speaker switch.',
+    markers: 'Exports a frame at each sequence marker position.'
+};
+
+var sensitivityHints = {
+    1: 'Only major cuts (clips > 10s)', 2: 'Only major cuts (clips > 10s)',
+    3: 'Medium cuts (clips > 5s)', 4: 'Medium cuts (clips > 5s)',
+    5: 'Min clip duration: ~2s', 6: 'Min clip duration: ~2s',
+    7: 'Fine cuts (clips > 0.5s)', 8: 'Fine cuts (clips > 0.5s)',
+    9: 'All edit points', 10: 'All edit points'
+};
+
+strategySelect.addEventListener('change', function() {
+    strategyHint.textContent = strategyHints[this.value] || '';
+    // Show/hide sensitivity for strategies that use it
+    if (this.value === 'markers') {
+        sensitivitySection.style.display = 'none';
+        editPointPreview.textContent = '';
+    } else {
+        sensitivitySection.style.display = 'block';
+        updateEditPointPreview();
+    }
+});
+
 sensitivitySlider.addEventListener('input', function() {
     sensitivityValue.textContent = this.value;
+    sensitivityHint.textContent = sensitivityHints[this.value] || '';
+    updateEditPointPreview();
 });
+
+function updateEditPointPreview() {
+    if (methodSelect.value !== 'motion' || strategySelect.value !== 'cuts') return;
+    if (!exportFramesBtn.disabled === true && !sequenceInfo.style.display) return;
+    csInterface.evalScript('getEditPointCount("' + sensitivitySlider.value + '")', function(result) {
+        try {
+            var data = JSON.parse(result);
+            if (data.count !== undefined) {
+                editPointPreview.textContent = '\u2192 ' + data.count + ' edit points detected';
+            }
+        } catch(e) {}
+    });
+}
 
 // Helper Functions
 function showStatus(message, type = 'info') {
@@ -87,6 +133,7 @@ selectSequenceBtn.addEventListener('click', function() {
                 sequenceInfo.style.display = 'block';
                 exportFramesBtn.disabled = false;
                 showStatus('Sequence selected!', 'success');
+                updateEditPointPreview();
             } catch (e) {
                 showStatus('Error parsing sequence info: ' + e.message, 'error');
             }
@@ -108,12 +155,15 @@ exportFramesBtn.addEventListener('click', function() {
     // Prepare parameters
     const format = formatSelect.value;
 
+    const strategy = strategySelect.value;
+
     const params = JSON.stringify({
         method: method,
         format: format,
         outputPath: customOutputPath,
         interval: parseInt(interval),
-        sensitivity: parseInt(sensitivity)
+        sensitivity: parseInt(sensitivity),
+        strategy: strategy
     });
     
     // Call ExtendScript — escape backslashes for evalScript string embedding

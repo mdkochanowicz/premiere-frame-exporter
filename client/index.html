@@ -42,9 +42,21 @@
         </div>
 
         <div class="section" id="motionSettings" style="display: none;">
-            <label for="sensitivity">Motion Sensitivity:</label>
-            <input type="range" id="sensitivity" min="1" max="10" value="5">
-            <span id="sensitivityValue">5</span>
+            <label for="strategy">Detection Strategy:</label>
+            <select id="strategy">
+                <option value="cuts" selected>Cut Detection (edit points)</option>
+                <option value="markers">Markers (sequence markers)</option>
+            </select>
+            <p class="hint" id="strategyHint">Scans timeline for clip boundaries — captures each speaker switch.</p>
+
+            <div id="sensitivitySection">
+                <label for="sensitivity">Sensitivity:</label>
+                <input type="range" id="sensitivity" min="1" max="10" value="5">
+                <span id="sensitivityValue">5</span>
+                <p class="hint" id="sensitivityHint">Min clip duration filter: ~2s</p>
+            </div>
+
+            <p id="editPointPreview" class="hint" style="margin-top:8px;"></p>
         </div>
 
         <div class="section">

@@ -131,3 +131,20 @@ input[type="range"] {
     background-color: #5a3a3a;
     color: #e37e7e;
 }
+
+.hint {
+    font-size: 11px;
+    color: #888;
+    margin-top: 6px;
+    font-style: italic;
+}
+
+#motionSettings select {
+    margin-bottom: 12px;
+}
+
+#editPointPreview {
+    color: #4a9eff;
+    font-weight: 500;
+    font-style: normal;
+}

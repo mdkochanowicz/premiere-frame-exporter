@@ -54,6 +54,113 @@ function exportSingleFrame(qeSeq, timecode, outputPath, format) {
 }
 
 
+// Collect edit/cut points from all video tracks in the active sequence
+// Returns an array of timestamps (in seconds) where cuts occur
+function collectEditPoints(seq, sensitivity) {
+    var editPoints = [];
+    var ticksPerFrame = parseFloat(seq.timebase);
+
+    // Sensitivity controls minimum clip duration to consider (in seconds)
+    // 1 = only major cuts (clips > 10s), 10 = every single cut
+    var minClipDuration;
+    if (sensitivity <= 2) {
+        minClipDuration = 10;
+    } else if (sensitivity <= 4) {
+        minClipDuration = 5;
+    } else if (sensitivity <= 6) {
+        minClipDuration = 2;
+    } else if (sensitivity <= 8) {
+        minClipDuration = 0.5;
+    } else {
+        minClipDuration = 0; // all cuts
+    }
+
+    // Scan all video tracks for clip boundaries
+    for (var t = 0; t < seq.videoTracks.numTracks; t++) {
+        var track = seq.videoTracks[t];
+        if (track.clips.numItems === 0) continue;
+
+        for (var c = 0; c < track.clips.numItems; c++) {
+            var clip = track.clips[c];
+            var clipStartTicks = parseFloat(clip.start.ticks);
+            var clipEndTicks = parseFloat(clip.end.ticks);
+            var clipDurationSec = (clipEndTicks - clipStartTicks) / TICKS_PER_SECOND;
+
+            // Filter out clips shorter than the minimum duration
+            if (clipDurationSec < minClipDuration) continue;
+
+            // Add the start of each clip as an edit point
+            // Offset by a few frames into the clip to avoid transition frames
+            var offsetTicks = ticksPerFrame * 3; // 3 frames in
+            var pointTicks = clipStartTicks + offsetTicks;
+            var pointSeconds = pointTicks / TICKS_PER_SECOND;
+
+            editPoints.push(pointSeconds);
+
+            // For longer clips (>30s), also add a mid-point sample
+            if (clipDurationSec > 30) {
+                var midSeconds = (clipStartTicks + clipEndTicks) / 2 / TICKS_PER_SECOND;
+                editPoints.push(midSeconds);
+            }
+        }
+    }
+
+    // Sort and deduplicate (remove points within 1 second of each other)
+    editPoints.sort(function(a, b) { return a - b; });
+
+    var deduplicated = [];
+    for (var i = 0; i < editPoints.length; i++) {
+        if (deduplicated.length === 0 || (editPoints[i] - deduplicated[deduplicated.length - 1]) > 1.0) {
+            deduplicated.push(editPoints[i]);
+        }
+    }
+
+    // Always include the very first frame if not already present
+    if (deduplicated.length === 0 || deduplicated[0] > 1.0) {
+        deduplicated.unshift(0.1);
+    }
+
+    return deduplicated;
+}
+
+
+// Get edit point count for UI preview (so user knows how many frames will be exported)
+function getEditPointCount(sensitivityStr) {
+    try {
+        var sensitivity = parseInt(sensitivityStr, 10) || 5;
+        var seq = app.project.activeSequence;
+        if (!seq) {
+            return JSON.stringify({ error: 'No active sequence.' });
+        }
+        var points = collectEditPoints(seq, sensitivity);
+        return JSON.stringify({ count: points.length });
+    } catch (e) {
+        return JSON.stringify({ error: e.message });
+    }
+}
+
+
+// Collect sequence marker positions (in seconds)
+function collectMarkerPoints(seq) {
+    var points = [];
+    var markers = seq.markers;
+
+    if (markers && markers.numMarkers > 0) {
+        var marker = markers.getFirstMarker();
+        while (marker) {
+            var markerTicks = parseFloat(marker.start.ticks);
+            var markerSeconds = markerTicks / TICKS_PER_SECOND;
+            points.push(markerSeconds);
+
+            marker = markers.getNextMarker(marker);
+        }
+    }
+
+    points.sort(function(a, b) { return a - b; });
+    return points;
+}
+
+
 // Export frames from the active sequence
 function exportFrames(paramsJSON) {
     try {
@@ -75,7 +182,8 @@ function exportFrames(paramsJSON) {
         var format = params.format || 'png';
         var method = params.method;
         var interval = params.interval;
-        var sensitivity = params.sensitivity;
+        var sensitivity = params.sensitivity || 5;
+        var strategy = params.strategy || 'cuts';
 
         var endTicks = parseFloat(seq.end);
         var ticksPerFrame = parseFloat(seq.timebase);
@@ -108,15 +216,33 @@ function exportFrames(paramsJSON) {
                 timestamps.push(i);
             }
         } else if (method === 'motion') {
-            // Motion detection placeholder - adjust interval by sensitivity
-            var adjustedInterval = Math.max(0.5, interval / (sensitivity / 5));
-            for (var i = 0; i < durationSeconds; i += adjustedInterval) {
-                timestamps.push(i);
+            if (strategy === 'cuts') {
+                // Cut/Edit Detection — scan timeline for clip boundaries
+                timestamps = collectEditPoints(seq, sensitivity);
+            } else if (strategy === 'markers') {
+                // Marker-based — export at sequence marker positions
+                timestamps = collectMarkerPoints(seq);
+                if (timestamps.length === 0) {
+                    return JSON.stringify({ error: 'No markers found in the sequence. Add markers first or use Cut Detection.' });
+                }
             }
         }
 
         if (timestamps.length === 0) {
-            return JSON.stringify({ error: 'No frames to export (sequence too short or interval too large).' });
+            return JSON.stringify({ error: 'No frames to export. Check that the sequence has clips on video tracks.' });
+        }
+
+        // Clamp timestamps to sequence duration
+        var validTimestamps = [];
+        for (var v = 0; v < timestamps.length; v++) {
+            if (timestamps[v] >= 0 && timestamps[v] < durationSeconds) {
+                validTimestamps.push(timestamps[v]);
+            }
+        }
+        timestamps = validTimestamps;
+
+        if (timestamps.length === 0) {
+            return JSON.stringify({ error: 'No valid frames to export within sequence duration.' });
         }
 
         // Export each frame using QE DOM Export Frame
