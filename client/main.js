@@ -23,7 +23,29 @@ const statusDiv = document.getElementById('status');
 const outputPathInput = document.getElementById('outputPath');
 const browseFolderBtn = document.getElementById('browseFolder');
 
+// Face detection UI elements
+const faceSettings = document.getElementById('faceSettings');
+const faceSensitivitySlider = document.getElementById('faceSensitivity');
+const faceSensitivityValue = document.getElementById('faceSensitivityValue');
+const faceSensitivityHint = document.getElementById('faceSensitivityHint');
+const progressContainer = document.getElementById('progressContainer');
+const progressFill = document.getElementById('progressFill');
+const progressText = document.getElementById('progressText');
+
 var customOutputPath = '';
+var faceModelReady = false;
+
+// Initialize face detection model on startup
+(function initFaceModel() {
+    var extensionPath = csInterface.getSystemPath(SystemPath.EXTENSION);
+    var modelsDir = extensionPath + '/client/models';
+    FaceAnalyzer.init(modelsDir).then(function() {
+        faceModelReady = true;
+        console.log('[main] Face detection model ready');
+    }).catch(function(err) {
+        console.error('[main] Failed to load face model:', err);
+    });
+})();
 
 // Browse for output folder using modern Windows file explorer dialog
 var nodePath = require('path');
@@ -49,12 +71,16 @@ browseFolderBtn.addEventListener('click', function() {
 
 // Event Listeners
 methodSelect.addEventListener('change', function() {
+    timeSettings.style.display = 'none';
+    motionSettings.style.display = 'none';
+    faceSettings.style.display = 'none';
+
     if (this.value === 'time') {
         timeSettings.style.display = 'block';
-        motionSettings.style.display = 'none';
     } else if (this.value === 'motion') {
-        timeSettings.style.display = 'none';
         motionSettings.style.display = 'block';
+    } else if (this.value === 'face') {
+        faceSettings.style.display = 'block';
     }
 });
 
@@ -104,6 +130,25 @@ function updateEditPointPreview() {
     });
 }
 
+// Face sensitivity hints
+var faceSensitivityHints = {
+    1: 'Very low \u2014 only drastic face changes',
+    2: 'Low \u2014 major speaker switches',
+    3: 'Low-medium',
+    4: 'Medium-low',
+    5: 'Balanced \u2014 captures clear speaker changes',
+    6: 'Medium-high',
+    7: 'High \u2014 catches subtle movements',
+    8: 'High \u2014 more frames exported',
+    9: 'Very high \u2014 many frames',
+    10: 'Maximum \u2014 captures every small change'
+};
+
+faceSensitivitySlider.addEventListener('input', function() {
+    faceSensitivityValue.textContent = this.value;
+    faceSensitivityHint.textContent = faceSensitivityHints[this.value] || '';
+});
+
 // Helper Functions
 function showStatus(message, type = 'info') {
     statusDiv.textContent = message;
@@ -143,17 +188,138 @@ selectSequenceBtn.addEventListener('click', function() {
     });
 });
 
+// Helper: wrap csInterface.evalScript in a Promise
+function evalScriptAsync(script) {
+    return new Promise(function(resolve, reject) {
+        csInterface.evalScript(script, function(result) {
+            if (result && result !== 'undefined' && result !== 'null') {
+                try {
+                    var data = JSON.parse(result);
+                    if (data.error) {
+                        reject(new Error(data.error));
+                    } else {
+                        resolve(data);
+                    }
+                } catch (e) {
+                    reject(new Error('Unexpected response: ' + result));
+                }
+            } else {
+                reject(new Error('No response from ExtendScript'));
+            }
+        });
+    });
+}
+
+// Progress bar helpers
+function showProgress(phase, percent, text) {
+    progressContainer.style.display = 'block';
+    progressFill.className = 'progress-fill ' + phase;
+    progressFill.style.width = percent + '%';
+    progressText.textContent = text;
+}
+
+function hideProgress() {
+    progressContainer.style.display = 'none';
+    progressFill.style.width = '0%';
+    progressText.textContent = '';
+}
+
+// Face Detection 3-pass export flow
+function exportWithFaceDetection(format, sensitivity) {
+    if (!faceModelReady) {
+        showStatus('Face detection model not loaded yet. Please wait a moment and try again.', 'error');
+        exportFramesBtn.disabled = false;
+        return;
+    }
+
+    // PASS 1: Sampling — export low-quality JPEG frames
+    showStatus('Pass 1/3: Exporting sampling frames...', 'info');
+    showProgress('sampling', 10, 'Sampling frames from sequence...');
+
+    var samplingParams = JSON.stringify({ sensitivity: sensitivity });
+    var escapedSampling = samplingParams.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+
+    evalScriptAsync("exportSamplingFrames('" + escapedSampling + "')")
+        .then(function(samplingResult) {
+            showProgress('sampling', 100, 'Sampled ' + samplingResult.count + ' frames');
+            showStatus('Pass 2/3: Analyzing faces... (0/' + samplingResult.count + ')', 'info');
+
+            // PASS 2: Analyze faces in sampled frames
+            return FaceAnalyzer.analyzeFrames(
+                samplingResult.path,
+                samplingResult.count,
+                samplingResult.interval,
+                sensitivity,
+                function(current, total) {
+                    var pct = Math.round((current / total) * 100);
+                    showProgress('analyzing', pct, 'Analyzing face ' + current + '/' + total);
+                    showStatus('Pass 2/3: Analyzing faces... (' + current + '/' + total + ')', 'info');
+                }
+            ).then(function(timestamps) {
+                return { timestamps: timestamps, samplingPath: samplingResult.path };
+            });
+        })
+        .then(function(analysisResult) {
+            showProgress('analyzing', 100, 'Found ' + analysisResult.timestamps.length + ' face changes');
+
+            if (analysisResult.timestamps.length === 0) {
+                showStatus('No significant face changes detected. Try increasing sensitivity.', 'error');
+                hideProgress();
+                exportFramesBtn.disabled = false;
+                // Cleanup
+                csInterface.evalScript('cleanupSamplingFrames()');
+                return;
+            }
+
+            // PASS 3: Export final frames at detected timestamps
+            showStatus('Pass 3/3: Exporting ' + analysisResult.timestamps.length + ' frames...', 'info');
+            showProgress('exporting', 50, 'Exporting final frames...');
+
+            var exportParams = JSON.stringify({
+                timestamps: analysisResult.timestamps,
+                format: format,
+                outputPath: customOutputPath
+            });
+            var escapedExport = exportParams.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+
+            return evalScriptAsync("exportFramesByTimestamps('" + escapedExport + "')")
+                .then(function(exportResult) {
+                    showProgress('exporting', 100, 'Done!');
+                    showStatus('Exported ' + exportResult.count + ' frames to: ' + exportResult.path, 'success');
+                    exportFramesBtn.disabled = false;
+
+                    // Cleanup sampling frames
+                    csInterface.evalScript('cleanupSamplingFrames()');
+
+                    setTimeout(hideProgress, 3000);
+                });
+        })
+        .catch(function(err) {
+            showStatus('Face detection error: ' + err.message, 'error');
+            hideProgress();
+            exportFramesBtn.disabled = false;
+            csInterface.evalScript('cleanupSamplingFrames()');
+        });
+}
+
 // Export Frames
 exportFramesBtn.addEventListener('click', function() {
     const method = methodSelect.value;
     const interval = intervalInput.value;
     const sensitivity = sensitivitySlider.value;
-    
-    showStatus('Exporting frames...', 'info');
-    exportFramesBtn.disabled = true;
-    
-    // Prepare parameters
     const format = formatSelect.value;
+    
+    exportFramesBtn.disabled = true;
+
+    // Face detection uses separate 3-pass flow
+    if (method === 'face') {
+        var faceSens = parseInt(faceSensitivitySlider.value);
+        exportWithFaceDetection(format, faceSens);
+        return;
+    }
+
+    // Time-based and Motion detection use the original single-pass flow
+    showStatus('Exporting frames...', 'info');
 
     const strategy = strategySelect.value;
 

@@ -161,6 +161,166 @@ function collectMarkerPoints(seq) {
 }
 
 
+// Export low-quality sampling frames for face detection analysis
+// Returns: { count, path, interval } or { error }
+function exportSamplingFrames(paramsJSON) {
+    try {
+        var params = JSON.parse(paramsJSON);
+        var seq = app.project.activeSequence;
+
+        if (!seq) {
+            return JSON.stringify({ error: 'No active sequence.' });
+        }
+
+        app.enableQE();
+        var qeSeq = qe.project.getActiveSequence();
+
+        if (!qeSeq) {
+            return JSON.stringify({ error: 'Could not access QE sequence.' });
+        }
+
+        var endTicks = parseFloat(seq.end);
+        var durationSeconds = endTicks / TICKS_PER_SECOND;
+
+        // Sampling interval — every 1 second by default, adjustable by sensitivity
+        var sensitivity = params.sensitivity || 5;
+        var samplingInterval;
+        if (sensitivity <= 3) {
+            samplingInterval = 2;      // fewer samples, faster
+        } else if (sensitivity <= 6) {
+            samplingInterval = 1;      // balanced
+        } else {
+            samplingInterval = 0.5;    // more samples, more precise
+        }
+
+        // Create temp folder for sampling frames
+        var tempBase = Folder.temp.fsName;
+        var samplingFolder = new Folder(tempBase + '\\FrameExporter_sampling');
+        if (samplingFolder.exists) {
+            // Clean up old sampling frames
+            var oldFiles = samplingFolder.getFiles('*.jpg');
+            for (var f = 0; f < oldFiles.length; f++) {
+                oldFiles[f].remove();
+            }
+        } else {
+            samplingFolder.create();
+        }
+
+        // Export JPEG samples (small, fast) at regular intervals
+        var exportedCount = 0;
+        for (var t = 0; t < durationSeconds; t += samplingInterval) {
+            var ticks = String(Math.round(t * TICKS_PER_SECOND));
+            seq.setPlayerPosition(ticks);
+
+            var timecode = qeSeq.CTI.timecode;
+            var frameName = 'sample_' + zeroPad(exportedCount + 1, 5);
+            var framePath = samplingFolder.fsName + '\\' + frameName;
+
+            // Always export as JPEG for speed
+            qeSeq.exportFrameJPEG(timecode, framePath);
+            exportedCount++;
+        }
+
+        return JSON.stringify({
+            count: exportedCount,
+            path: samplingFolder.fsName,
+            interval: samplingInterval,
+            duration: Math.round(durationSeconds * 100) / 100
+        });
+
+    } catch (e) {
+        return JSON.stringify({ error: e.message });
+    }
+}
+
+
+// Export only specific frames by timestamp array (for face detection final pass)
+// paramsJSON: { timestamps: [1.5, 3.0, ...], format, outputPath }
+function exportFramesByTimestamps(paramsJSON) {
+    try {
+        var params = JSON.parse(paramsJSON);
+        var seq = app.project.activeSequence;
+
+        if (!seq) {
+            return JSON.stringify({ error: 'No active sequence.' });
+        }
+
+        app.enableQE();
+        var qeSeq = qe.project.getActiveSequence();
+
+        if (!qeSeq) {
+            return JSON.stringify({ error: 'Could not access QE sequence.' });
+        }
+
+        var format = params.format || 'png';
+        var timestamps = params.timestamps || [];
+
+        if (timestamps.length === 0) {
+            return JSON.stringify({ error: 'No timestamps provided.' });
+        }
+
+        // Determine output folder
+        var outputFolder;
+        if (params.outputPath && params.outputPath !== '') {
+            outputFolder = new Folder(params.outputPath);
+        } else {
+            var projectPath = app.project.path;
+            var projectFolder = new Folder(projectPath).parent;
+            var safeName = seq.name.replace(/[\/\\:*?"<>|]/g, '_');
+            outputFolder = new Folder(projectFolder.fsName + '/FrameExports_' + safeName);
+        }
+
+        if (!outputFolder.exists) {
+            var created = outputFolder.create();
+            if (!created) {
+                return JSON.stringify({ error: 'Could not create output folder: ' + outputFolder.fsName });
+            }
+        }
+
+        var exportedCount = 0;
+        for (var i = 0; i < timestamps.length; i++) {
+            var timeSeconds = timestamps[i];
+            var ticks = String(Math.round(timeSeconds * TICKS_PER_SECOND));
+            seq.setPlayerPosition(ticks);
+
+            var timecode = qeSeq.CTI.timecode;
+            var frameName = 'frame_' + zeroPad(i + 1, 4);
+            var framePath = outputFolder.fsName + '\\' + frameName;
+
+            exportSingleFrame(qeSeq, timecode, framePath, format);
+            exportedCount++;
+        }
+
+        return JSON.stringify({
+            count: exportedCount,
+            path: outputFolder.fsName
+        });
+
+    } catch (e) {
+        return JSON.stringify({ error: e.message });
+    }
+}
+
+
+// Clean up sampling temp folder
+function cleanupSamplingFrames() {
+    try {
+        var tempBase = Folder.temp.fsName;
+        var samplingFolder = new Folder(tempBase + '\\FrameExporter_sampling');
+        if (samplingFolder.exists) {
+            var files = samplingFolder.getFiles();
+            for (var f = 0; f < files.length; f++) {
+                files[f].remove();
+            }
+            samplingFolder.remove();
+        }
+        return JSON.stringify({ success: true });
+    } catch (e) {
+        return JSON.stringify({ error: e.message });
+    }
+}
+
+
 // Export frames from the active sequence
 function exportFrames(paramsJSON) {
     try {
