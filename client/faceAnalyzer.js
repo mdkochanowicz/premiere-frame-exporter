@@ -22,13 +22,49 @@ var FaceAnalyzer = (function() {
         return document.createElement('img');
     }
 
+    function createCanvasElement() {
+        return document.createElement('canvas');
+    }
+
+    function ensureFaceApiEnvPatched() {
+        if (!faceapi || !faceapi.env || !faceapi.env.monkeyPatch) {
+            return;
+        }
+
+        // CEP embedded Chromium can throw "Illegal constructor" when libraries
+        // try to instantiate DOM classes directly. Provide safe factory-style
+        // constructors so face-api/tfjs can create image/canvas elements.
+        faceapi.env.monkeyPatch({
+            Canvas: function Canvas() {
+                return createCanvasElement();
+            },
+            Image: function Image() {
+                return createImageElement();
+            },
+            ImageData: window.ImageData
+        });
+    }
+
     // Initialize face-api.js with TinyFaceDetector model
     function init(modelsDir) {
         modelPath = toFileUrl(modelsDir);
-        return faceapi.nets.tinyFaceDetector.loadFromUri(modelPath).then(function() {
-            isModelLoaded = true;
-            console.log('[FaceAnalyzer] TinyFaceDetector model loaded');
-        });
+        ensureFaceApiEnvPatched();
+
+        // WebGL backend in CEP can be unstable; CPU backend is slower but stable.
+        return faceapi.tf.setBackend('cpu')
+            .catch(function() {
+                return null;
+            })
+            .then(function() {
+                return faceapi.tf.ready();
+            })
+            .then(function() {
+                return faceapi.nets.tinyFaceDetector.loadFromUri(modelPath);
+            })
+            .then(function() {
+                isModelLoaded = true;
+                console.log('[FaceAnalyzer] TinyFaceDetector model loaded');
+            });
     }
 
 
@@ -43,7 +79,26 @@ var FaceAnalyzer = (function() {
                     scoreThreshold: 0.4   // minimum confidence
                 });
 
-                faceapi.detectAllFaces(img, options).then(function(detections) {
+                // Analyze a canvas instead of img directly for better CEP compatibility.
+                var canvas = createCanvasElement();
+                canvas.width = img.naturalWidth || img.width;
+                canvas.height = img.naturalHeight || img.height;
+                var ctx = canvas.getContext('2d');
+                if (!ctx) {
+                    resolve([]);
+                    return;
+                }
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+                var inputTensor;
+                try {
+                    inputTensor = faceapi.tf.browser.fromPixels(canvas);
+                } catch (tensorErr) {
+                    reject(new Error('Tensor creation failed for ' + imagePath + ': ' + tensorErr.message));
+                    return;
+                }
+
+                faceapi.detectAllFaces(inputTensor, options).then(function(detections) {
                     // Simplify results: keep box center + size + score
                     var faces = detections.map(function(det) {
                         var box = det.box;
@@ -55,8 +110,14 @@ var FaceAnalyzer = (function() {
                             score: Math.round(det.score * 100) / 100
                         };
                     });
+                    if (inputTensor && inputTensor.dispose) {
+                        inputTensor.dispose();
+                    }
                     resolve(faces);
                 }).catch(function(err) {
+                    if (inputTensor && inputTensor.dispose) {
+                        inputTensor.dispose();
+                    }
                     reject(new Error('Face analysis failed for ' + imagePath + ': ' + err.message));
                 });
             };
