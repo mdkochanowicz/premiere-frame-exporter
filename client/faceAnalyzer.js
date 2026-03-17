@@ -7,9 +7,24 @@ var FaceAnalyzer = (function() {
     var isModelLoaded = false;
     var modelPath = '';
 
+    function toFileUrl(filePath) {
+        var normalized = String(filePath || '').replace(/\\/g, '/');
+        if (/^file:\/\//i.test(normalized)) {
+            return normalized;
+        }
+        if (normalized.charAt(0) !== '/') {
+            normalized = '/' + normalized;
+        }
+        return 'file://' + normalized;
+    }
+
+    function createImageElement() {
+        return document.createElement('img');
+    }
+
     // Initialize face-api.js with TinyFaceDetector model
     function init(modelsDir) {
-        modelPath = modelsDir;
+        modelPath = toFileUrl(modelsDir);
         return faceapi.nets.tinyFaceDetector.loadFromUri(modelPath).then(function() {
             isModelLoaded = true;
             console.log('[FaceAnalyzer] TinyFaceDetector model loaded');
@@ -21,7 +36,7 @@ var FaceAnalyzer = (function() {
     // Returns a promise with array of face detections (box, score)
     function detectFaces(imagePath) {
         return new Promise(function(resolve, reject) {
-            var img = new Image();
+            var img = createImageElement();
             img.onload = function() {
                 var options = new faceapi.TinyFaceDetectorOptions({
                     inputSize: 320,       // smaller = faster, 320 is good balance
@@ -41,12 +56,14 @@ var FaceAnalyzer = (function() {
                         };
                     });
                     resolve(faces);
-                }).catch(reject);
+                }).catch(function(err) {
+                    reject(new Error('Face analysis failed for ' + imagePath + ': ' + err.message));
+                });
             };
             img.onerror = function() {
                 resolve([]); // skip broken images
             };
-            img.src = 'file:///' + imagePath.replace(/\\/g, '/');
+            img.src = toFileUrl(imagePath);
         });
     }
 
