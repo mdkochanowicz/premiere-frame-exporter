@@ -26,6 +26,19 @@ var FaceAnalyzer = (function() {
         return document.createElement('canvas');
     }
 
+    function loadImage(imagePath) {
+        return new Promise(function(resolve, reject) {
+            var img = createImageElement();
+            img.onload = function() {
+                resolve(img);
+            };
+            img.onerror = function() {
+                reject(new Error('Failed to load image: ' + imagePath));
+            };
+            img.src = toFileUrl(imagePath);
+        });
+    }
+
     function ensureFaceApiEnvPatched() {
         if (!faceapi || !faceapi.env || !faceapi.env.monkeyPatch) {
             return;
@@ -68,64 +81,154 @@ var FaceAnalyzer = (function() {
     }
 
 
+    function detectFacesFromImage(img, imagePath) {
+        return new Promise(function(resolve, reject) {
+            var options = new faceapi.TinyFaceDetectorOptions({
+                inputSize: 320,       // smaller = faster, 320 is good balance
+                scoreThreshold: 0.4   // minimum confidence
+            });
+
+            // Analyze a canvas instead of img directly for better CEP compatibility.
+            var canvas = createCanvasElement();
+            canvas.width = img.naturalWidth || img.width;
+            canvas.height = img.naturalHeight || img.height;
+            var ctx = canvas.getContext('2d');
+            if (!ctx) {
+                resolve([]);
+                return;
+            }
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+            var inputTensor;
+            try {
+                inputTensor = faceapi.tf.browser.fromPixels(canvas);
+            } catch (tensorErr) {
+                reject(new Error('Tensor creation failed for ' + imagePath + ': ' + tensorErr.message));
+                return;
+            }
+
+            faceapi.detectAllFaces(inputTensor, options).then(function(detections) {
+                // Simplify results: keep box center + size + score
+                var faces = detections.map(function(det) {
+                    var box = det.box;
+                    return {
+                        x: Math.round(box.x + box.width / 2),
+                        y: Math.round(box.y + box.height / 2),
+                        width: Math.round(box.width),
+                        height: Math.round(box.height),
+                        score: Math.round(det.score * 100) / 100
+                    };
+                });
+                if (inputTensor && inputTensor.dispose) {
+                    inputTensor.dispose();
+                }
+                resolve(faces);
+            }).catch(function(err) {
+                if (inputTensor && inputTensor.dispose) {
+                    inputTensor.dispose();
+                }
+                reject(new Error('Face analysis failed for ' + imagePath + ': ' + err.message));
+            });
+        });
+    }
+
     // Detect faces in a single image file
     // Returns a promise with array of face detections (box, score)
     function detectFaces(imagePath) {
-        return new Promise(function(resolve, reject) {
-            var img = createImageElement();
-            img.onload = function() {
-                var options = new faceapi.TinyFaceDetectorOptions({
-                    inputSize: 320,       // smaller = faster, 320 is good balance
-                    scoreThreshold: 0.4   // minimum confidence
-                });
-
-                // Analyze a canvas instead of img directly for better CEP compatibility.
-                var canvas = createCanvasElement();
-                canvas.width = img.naturalWidth || img.width;
-                canvas.height = img.naturalHeight || img.height;
-                var ctx = canvas.getContext('2d');
-                if (!ctx) {
-                    resolve([]);
-                    return;
-                }
-                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-                var inputTensor;
-                try {
-                    inputTensor = faceapi.tf.browser.fromPixels(canvas);
-                } catch (tensorErr) {
-                    reject(new Error('Tensor creation failed for ' + imagePath + ': ' + tensorErr.message));
-                    return;
-                }
-
-                faceapi.detectAllFaces(inputTensor, options).then(function(detections) {
-                    // Simplify results: keep box center + size + score
-                    var faces = detections.map(function(det) {
-                        var box = det.box;
-                        return {
-                            x: Math.round(box.x + box.width / 2),
-                            y: Math.round(box.y + box.height / 2),
-                            width: Math.round(box.width),
-                            height: Math.round(box.height),
-                            score: Math.round(det.score * 100) / 100
-                        };
-                    });
-                    if (inputTensor && inputTensor.dispose) {
-                        inputTensor.dispose();
-                    }
-                    resolve(faces);
-                }).catch(function(err) {
-                    if (inputTensor && inputTensor.dispose) {
-                        inputTensor.dispose();
-                    }
-                    reject(new Error('Face analysis failed for ' + imagePath + ': ' + err.message));
-                });
-            };
-            img.onerror = function() {
-                resolve([]); // skip broken images
-            };
-            img.src = toFileUrl(imagePath);
+        return loadImage(imagePath).then(function(img) {
+            return detectFacesFromImage(img, imagePath);
         });
+    }
+
+
+    // Variance of Laplacian sharpness metric.
+    // Higher value = sharper image. Lower value = blurrier image.
+    function computeLaplacianVarianceFromImage(img, cropX, cropY, cropW, cropH, targetW, targetH) {
+        var canvas = createCanvasElement();
+        canvas.width = targetW;
+        canvas.height = targetH;
+
+        var ctx = canvas.getContext('2d');
+        if (!ctx) {
+            return 0;
+        }
+
+        ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, targetW, targetH);
+        var imageData = ctx.getImageData(0, 0, targetW, targetH).data;
+
+        var gray = new Array(targetW * targetH);
+        for (var i = 0, p = 0; i < imageData.length; i += 4, p++) {
+            gray[p] = 0.299 * imageData[i] + 0.587 * imageData[i + 1] + 0.114 * imageData[i + 2];
+        }
+
+        var lapValues = [];
+        for (var y = 1; y < targetH - 1; y++) {
+            for (var x = 1; x < targetW - 1; x++) {
+                var idx = y * targetW + x;
+                var lap =
+                    gray[(y - 1) * targetW + x] +
+                    gray[y * targetW + (x - 1)] -
+                    4 * gray[idx] +
+                    gray[y * targetW + (x + 1)] +
+                    gray[(y + 1) * targetW + x];
+                lapValues.push(lap);
+            }
+        }
+
+        if (lapValues.length === 0) {
+            return 0;
+        }
+
+        var mean = 0;
+        for (var m = 0; m < lapValues.length; m++) {
+            mean += lapValues[m];
+        }
+        mean /= lapValues.length;
+
+        var variance = 0;
+        for (var v = 0; v < lapValues.length; v++) {
+            var d = lapValues[v] - mean;
+            variance += d * d;
+        }
+
+        return variance / lapValues.length;
+    }
+
+    function getBlurThresholds(sensitivity) {
+        // Higher sensitivity allows slightly softer frames.
+        if (sensitivity <= 2) {
+            return { full: 230, lower: 140 };
+        }
+        if (sensitivity <= 4) {
+            return { full: 190, lower: 120 };
+        }
+        if (sensitivity <= 6) {
+            return { full: 160, lower: 100 };
+        }
+        if (sensitivity <= 8) {
+            return { full: 130, lower: 85 };
+        }
+        return { full: 110, lower: 70 };
+    }
+
+    function getBlurInfo(img, sensitivity) {
+        var width = img.naturalWidth || img.width;
+        var height = img.naturalHeight || img.height;
+        var lowerY = Math.floor(height * 0.55);
+        var lowerH = Math.max(1, height - lowerY);
+
+        var fullScore = computeLaplacianVarianceFromImage(img, 0, 0, width, height, 256, 144);
+        var lowerScore = computeLaplacianVarianceFromImage(img, 0, lowerY, width, lowerH, 256, 96);
+
+        var thresholds = getBlurThresholds(sensitivity);
+        var isBlurry = (fullScore < thresholds.full) || (lowerScore < thresholds.lower);
+
+        return {
+            fullScore: fullScore,
+            lowerScore: lowerScore,
+            thresholds: thresholds,
+            isBlurry: isBlurry
+        };
     }
 
 
@@ -207,6 +310,7 @@ var FaceAnalyzer = (function() {
 
         var timestamps = [];
         var prevFaces = null;
+        var skippedBlurCount = 0;
 
         // Process frames sequentially to avoid memory issues
         function processFrame(index) {
@@ -222,23 +326,43 @@ var FaceAnalyzer = (function() {
             var framePath = samplingPath + '\\sample_' + frameNum + '.jpg';
             var timeSeconds = index * samplingInterval;
 
-            return detectFaces(framePath).then(function(faces) {
-                if (prevFaces === null) {
-                    // Always include first frame
-                    timestamps.push(timeSeconds);
-                } else {
-                    var change = computeChangeScore(prevFaces, faces);
-                    if (change >= threshold) {
-                        timestamps.push(timeSeconds);
-                    }
+            return loadImage(framePath).then(function(img) {
+                var blurInfo = getBlurInfo(img, sensitivity);
+                if (blurInfo.isBlurry) {
+                    skippedBlurCount++;
+                    return processFrame(index + 1);
                 }
 
-                prevFaces = faces;
+                return detectFacesFromImage(img, framePath).then(function(faces) {
+                    if (prevFaces === null) {
+                        // Always include first accepted non-blurry frame
+                        timestamps.push(timeSeconds);
+                    } else {
+                        var change = computeChangeScore(prevFaces, faces);
+                        if (change >= threshold) {
+                            timestamps.push(timeSeconds);
+                        }
+                    }
+
+                    prevFaces = faces;
+                    return processFrame(index + 1);
+                });
+            }).catch(function(err) {
+                // Ignore unreadable sample frame and continue.
+                console.warn('[FaceAnalyzer] Skipping frame', framePath, err.message);
+                if (prevFaces === null) {
+                    prevFaces = [];
+                }
                 return processFrame(index + 1);
             });
         }
 
-        return processFrame(0);
+        return processFrame(0).then(function(result) {
+            if (skippedBlurCount > 0) {
+                console.log('[FaceAnalyzer] Skipped blurry frames:', skippedBlurCount);
+            }
+            return result;
+        });
     }
 
 
