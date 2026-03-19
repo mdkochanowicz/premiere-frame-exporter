@@ -182,15 +182,36 @@ function exportSamplingFrames(paramsJSON) {
         var endTicks = parseFloat(seq.end);
         var durationSeconds = endTicks / TICKS_PER_SECOND;
 
-        // Sampling interval — every 1 second by default, adjustable by sensitivity
+        // Sampling interval — adaptive and capped for long-form content.
         var sensitivity = params.sensitivity || 5;
         var samplingInterval;
-        if (sensitivity <= 3) {
-            samplingInterval = 2;      // fewer samples, faster
+        if (sensitivity <= 2) {
+            samplingInterval = 4;      // fastest
+        } else if (sensitivity <= 4) {
+            samplingInterval = 3;
         } else if (sensitivity <= 6) {
-            samplingInterval = 1;      // balanced
+            samplingInterval = 2;      // balanced
+        } else if (sensitivity <= 8) {
+            samplingInterval = 1.25;
         } else {
-            samplingInterval = 0.5;    // more samples, more precise
+            samplingInterval = 1;      // precise but still bounded
+        }
+
+        // Hard-cap sample count for long podcasts so analysis stays practical.
+        var maxSamples;
+        if (sensitivity <= 4) {
+            maxSamples = 900;
+        } else if (sensitivity <= 6) {
+            maxSamples = 1200;
+        } else if (sensitivity <= 8) {
+            maxSamples = 1600;
+        } else {
+            maxSamples = 2200;
+        }
+
+        var estimatedSamples = Math.floor(durationSeconds / samplingInterval);
+        if (estimatedSamples > maxSamples) {
+            samplingInterval = durationSeconds / maxSamples;
         }
 
         // Create temp folder for sampling frames
@@ -225,6 +246,8 @@ function exportSamplingFrames(paramsJSON) {
             count: exportedCount,
             path: samplingFolder.fsName,
             interval: samplingInterval,
+            estimatedSamples: estimatedSamples,
+            maxSamples: maxSamples,
             duration: Math.round(durationSeconds * 100) / 100
         });
 

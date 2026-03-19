@@ -84,7 +84,7 @@ var FaceAnalyzer = (function() {
     function detectFacesFromImage(img, imagePath) {
         return new Promise(function(resolve, reject) {
             var options = new faceapi.TinyFaceDetectorOptions({
-                inputSize: 320,       // smaller = faster, 320 is good balance
+                inputSize: 224,       // faster than 320; still accurate for podcast close-ups
                 scoreThreshold: 0.4   // minimum confidence
             });
 
@@ -130,6 +130,78 @@ var FaceAnalyzer = (function() {
                 reject(new Error('Face analysis failed for ' + imagePath + ': ' + err.message));
             });
         });
+    }
+
+    function buildFrameSignature(img) {
+        var targetW = 64;
+        var targetH = 36;
+        var canvas = createCanvasElement();
+        canvas.width = targetW;
+        canvas.height = targetH;
+
+        var ctx = canvas.getContext('2d');
+        if (!ctx) {
+            return null;
+        }
+
+        var width = img.naturalWidth || img.width;
+        var height = img.naturalHeight || img.height;
+        ctx.drawImage(img, 0, 0, width, height, 0, 0, targetW, targetH);
+
+        var data = ctx.getImageData(0, 0, targetW, targetH).data;
+        var signature = new Array(targetW * targetH);
+        for (var i = 0, p = 0; i < data.length; i += 4, p++) {
+            signature[p] = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+        }
+        return signature;
+    }
+
+    function computeSignatureDiff(prevSignature, currSignature) {
+        if (!prevSignature || !currSignature || prevSignature.length !== currSignature.length) {
+            return 1.0;
+        }
+
+        var diff = 0;
+        for (var i = 0; i < currSignature.length; i++) {
+            diff += Math.abs(currSignature[i] - prevSignature[i]);
+        }
+
+        // Normalize by max per-pixel diff (255) to get 0..1 range.
+        return diff / (currSignature.length * 255);
+    }
+
+    function getVisualDiffThreshold(sensitivity) {
+        // Lower threshold at high sensitivity so more subtle changes are kept.
+        if (sensitivity <= 2) {
+            return 0.06;
+        }
+        if (sensitivity <= 4) {
+            return 0.045;
+        }
+        if (sensitivity <= 6) {
+            return 0.03;
+        }
+        if (sensitivity <= 8) {
+            return 0.02;
+        }
+        return 0.015;
+    }
+
+    function getForcedFaceCheckStride(sensitivity) {
+        // Even if diff is small, run a periodic check to avoid missing slow changes.
+        if (sensitivity <= 2) {
+            return 10;
+        }
+        if (sensitivity <= 4) {
+            return 8;
+        }
+        if (sensitivity <= 6) {
+            return 6;
+        }
+        if (sensitivity <= 8) {
+            return 4;
+        }
+        return 3;
     }
 
     // Detect faces in a single image file
@@ -310,7 +382,12 @@ var FaceAnalyzer = (function() {
 
         var timestamps = [];
         var prevFaces = null;
+        var prevSignature = null;
         var skippedBlurCount = 0;
+        var skippedNoChangeCount = 0;
+        var faceChecks = 0;
+        var visualDiffThreshold = getVisualDiffThreshold(sensitivity);
+        var forcedFaceCheckStride = getForcedFaceCheckStride(sensitivity);
 
         // Process frames sequentially to avoid memory issues
         function processFrame(index) {
@@ -332,6 +409,20 @@ var FaceAnalyzer = (function() {
                     skippedBlurCount++;
                     return processFrame(index + 1);
                 }
+
+                var signature = buildFrameSignature(img);
+                var visualDiff = computeSignatureDiff(prevSignature, signature);
+                var shouldRunForcedCheck = (index % forcedFaceCheckStride) === 0;
+                var shouldRunFaceCheck = (prevSignature === null) || shouldRunForcedCheck || (visualDiff >= visualDiffThreshold);
+
+                prevSignature = signature;
+
+                if (!shouldRunFaceCheck) {
+                    skippedNoChangeCount++;
+                    return processFrame(index + 1);
+                }
+
+                faceChecks++;
 
                 return detectFacesFromImage(img, framePath).then(function(faces) {
                     if (prevFaces === null) {
@@ -361,6 +452,10 @@ var FaceAnalyzer = (function() {
             if (skippedBlurCount > 0) {
                 console.log('[FaceAnalyzer] Skipped blurry frames:', skippedBlurCount);
             }
+            if (skippedNoChangeCount > 0) {
+                console.log('[FaceAnalyzer] Skipped low-change frames:', skippedNoChangeCount);
+            }
+            console.log('[FaceAnalyzer] Face checks executed:', faceChecks);
             return result;
         });
     }
